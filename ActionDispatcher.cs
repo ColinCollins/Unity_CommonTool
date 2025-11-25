@@ -149,30 +149,40 @@ namespace Bear.Common
         public void Enqueue(Action<string> action, string value) => Enqueue(new ActionTask(action, ActionPayload.FromString(value)));
 
         /// <summary>
-        /// 在主线程调用，执行队列中的 Action。
+        /// 每次执行一个 ActionTask。返回 true 表示执行成功，false 表示队列已空。
+        /// </summary>
+        public bool Step()
+        {
+            ActionTask task;
+            lock (_lock)
+            {
+                if (_queue.Count == 0)
+                    return false;
+                task = _queue.Dequeue();
+            }
+
+            try
+            {
+                task.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 在主线程调用，执行队列中的 Action（最多执行 MaxPerProcess 个）。
         /// </summary>
         public void Process()
         {
             int processed = 0;
             while (processed < MaxPerProcess)
             {
-                ActionTask task;
-                lock (_lock)
-                {
-                    if (_queue.Count == 0)
-                        break;
-                    task = _queue.Dequeue();
-                }
-
-                try
-                {
-                    task.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(ex);
-                }
-
+                if (!Step())
+                    break;
                 processed++;
             }
         }
